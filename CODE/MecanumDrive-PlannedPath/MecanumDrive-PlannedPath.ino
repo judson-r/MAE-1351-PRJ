@@ -1,14 +1,19 @@
 #include "Arduino.h"
 #include "FastTrig.h"
 
-//Wheel order
-//1             2
-//    Arduino
-//
-//
-//
-//3             4
+/*Wheel order
+3             4
+    Arduino
 
+
+
+2             1
+*/          
+
+
+
+////////////////////////////////////////////////////////////////////////////
+//Immutables / Physical Characteristics
 float wheelDiamInch = 2.67;
 float wheelRadius = wheelDiamInch/2;
 int ticksPerRotation = 40; //20 on and 20 off
@@ -17,6 +22,27 @@ float wheelBaseWidth = 8.494094;
 float wheelBaseLength = 7.015748;
 int maxRPM = 200; //Will be higher on battery voltage
 double maxRPS = maxRPM/60;
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+//Tunable Parameters
+//Account for individual motor inefficiencies
+//0-1 value
+float wheelOneMultF = 1;
+float wheelOneMultR = 1;
+
+float wheelTwoMultF = 1;
+float wheelTwoMultR = 1;
+
+float wheelThreeMultF = 1;
+float wheelThreeMultR = 1;
+
+float wheelFourMultF = 1;
+float wheelFourMultR = 1;
+/////////////////////////////////////////////////////////////////////////////
+
+float turnSpeedMultiplier = 0.5; //Relative to regular drive speed
 
 uint8_t wheel1Start;
 bool prevEncoder1State = 0;
@@ -34,7 +60,7 @@ uint8_t wheel4Start;
 bool prevEncoder4State = 0;
 uint8_t wheelFourSpeed = 0;
 
-double segmentDriveTime = 1000000;
+double segmentTime = 1000000;
 double pathStartTime = 0;
 int pathPart = 0;
 
@@ -74,6 +100,7 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   updateWheelSpeed();
+  plannedPath();
 
 
 }
@@ -81,7 +108,7 @@ void loop() {
 void plannedPath(){
   switch(pathPart){
     case 0:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Go straight towards the coins
         driveToInchCoordinates(10,0);
       }
@@ -93,12 +120,12 @@ void plannedPath(){
     case 1:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
 
 
     case 2:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Pick up the coins
         arm(0,0);
       }
@@ -110,12 +137,12 @@ void plannedPath(){
     case 3:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
 
 
     case 4:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Strafe Left
         driveToInchCoordinates(0,-15);
       }
@@ -127,12 +154,12 @@ void plannedPath(){
     case 5:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
       
 
     case 6:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Drive Straight
         driveToInchCoordinates(15,0);
       }
@@ -144,12 +171,12 @@ void plannedPath(){
     case 7:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
       
 
     case 8:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Rotate
 
       }
@@ -161,12 +188,12 @@ void plannedPath(){
     case 9:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
       
 
     case 10:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Drive Straight
         driveToInchCoordinates(15,0);
       }
@@ -178,12 +205,12 @@ void plannedPath(){
     case 11:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
       
 
     case 12:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Drop coins
         arm(0,0);
       }
@@ -195,12 +222,12 @@ void plannedPath(){
     case 13:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
       
 
     case 14:
-      if(millis()-pathStartTime < segmentDriveTime){
+      if(millis()-pathStartTime < segmentTime){
         //Drive Straight Backwards
         driveToInchCoordinates(-15,0);
       }
@@ -212,7 +239,7 @@ void plannedPath(){
     case 15:
       pathStartTime = millis();
       pathPart++;
-      segmentDriveTime = 100000;
+      segmentTime = 100000;
       break;
       
 
@@ -225,11 +252,20 @@ void plannedPath(){
 
 void arm(float angleOfArm, bool vacuumPowerOn){
   //Arm Angle is 0 at coin pickup height, positive is picked up
-  segmentDriveTime = 0;
+  segmentTime = 0;
 }
 
 void rotateDegrees(double degreesTarget){
-  //Rotates to the specified degrees, rotates clockwise
+  //Rotates to the change specified in degrees, rotates clockwise
+  int ticksNeeded = ( degreesTarget / 360 ) * ticksPerRotation;
+  float timeToTurn = (ticksNeeded / ticksPerRotation) * maxRPS * turnSpeedMultiplier;
+  float wheelSpeed = maxRPS * turnSpeedMultiplier;
+  segmentTime = timeToTurn * 1000;
+
+  wheelSetPercentSpeed(WheelOne , wheelSpeed);
+  wheelSetPercentSpeed(WheelTwo , -wheelSpeed);
+  wheelSetPercentSpeed(WheelThree , -wheelSpeed);
+  wheelSetPercentSpeed(WheelFour , wheelSpeed);
 
 }
 
@@ -242,7 +278,7 @@ void driveToInchCoordinates(double x, double y){
   float power_FL_BR = sin(x-pi/4);
   double robotSpeed = (wheelRadius * maxRPS * 0.8) / (sin(angle) + cos(angle));
   double timeToDrive = (sqrt( sq(x) + sq(y) )) / robotSpeed;
-  segmentDriveTime = timeToDrive * 1000;
+  segmentTime = timeToDrive * 1000;
 
   wheelSetPercentSpeed(WheelOne, power_FL_BR);
   wheelSetPercentSpeed(WheelTwo, power_FR_BL);
@@ -316,37 +352,37 @@ double wheelSetPercentSpeed(int wheel, float speed){
   switch(wheel){
     case 1:
       if(speed > 0){
-        analogWrite( pwmMotor1Forward , speed * 255 );
+        analogWrite( pwmMotor1Forward , speed * 255 * wheelOneMultF);
       }
       else{
-        analogWrite( pwmMotor1Reverse , -speed * 255 );
+        analogWrite( pwmMotor1Reverse , -speed * 255 * wheelOneMultR);
       }
       break;
 
     case 2:
       if(speed > 0){
-        analogWrite( pwmMotor2Forward , speed * 255 );
+        analogWrite( pwmMotor2Forward , speed * 255 * wheelTwoMultF);
       }
       else{
-        analogWrite( pwmMotor2Reverse , -speed * 255 );
+        analogWrite( pwmMotor2Reverse , -speed * 255 * wheelTwoMultR);
       }
       break;
 
     case 3:
       if(speed > 0){
-        analogWrite( pwmMotor3Forward , speed * 255 );
+        analogWrite( pwmMotor3Forward , speed * 255 * wheelThreeMultF);
       }
       else{
-        analogWrite( pwmMotor3Reverse , -speed * 255 );
+        analogWrite( pwmMotor3Reverse , -speed * 255 * wheelThreeMultR);
       }
       break;
 
     case 4:
       if(speed > 0){
-        analogWrite( pwmMotor4Forward , speed * 255 );
+        analogWrite( pwmMotor4Forward , speed * 255 * wheelFourMultF);
       }
       else{
-        analogWrite( pwmMotor4Reverse , -speed * 255 );
+        analogWrite( pwmMotor4Reverse , -speed * 255 * wheelFourMultR);
       }
       break;
 
